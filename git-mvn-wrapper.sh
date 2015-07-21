@@ -35,6 +35,14 @@ find_module() {
   echo "$NDIR"
 }
 
+is_scm_dir() {
+  git rev-parse --is-inside-git-dir >/dev/null 2>&1 || hg st -mardn >/dev/null 2>&1
+}
+
+ls_scm_dir_modifications() {
+  git ls-files --modified 2>/dev/null || hg st -mardn 2>/dev/null
+}
+
 real_args=
 optimize=
 while [ $# -gt 0 ]; do
@@ -53,22 +61,22 @@ else
   # Optimized Maven execution requested. Drop the custom flag.
   set -- ${real_args}
 
-  if ! git rev-parse --is-inside-git-dir > /dev/null 2>&1; then
-    # This is not a Git repository; can't optimize the build.
-    mvn "$@"
-  else
+  if is_scm_dir; then
     # All is well. Perform the optimized Maven execution.
     #
     # For each modified file, print the root directory of the innermost Maven #
     # module to which the file belongs. Remove duplicates and join the
     # remaining module directory names with commas. Lastly, instruct Maven to
     # only build modified modules and their dependents.
-    git ls-files --modified | while read _file; do
+    ls_scm_dir_modifications | while read _file; do
       find_module "${_file}"
     done \
       | sort -u \
       | xargs echo \
       | tr ' ' ',' \
       | maybe_xargs mvn "$@" -amd -pl
+  else
+    # This is not a Git repository; can't optimize the build.
+    mvn "$@"
   fi
 fi
